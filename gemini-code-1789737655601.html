@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>體能站同步計時器</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #121212;
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+      padding: 20px;
+    }
+    .status-tag {
+      font-size: 1.8rem;
+      font-weight: bold;
+      padding: 8px 24px;
+      border-radius: 30px;
+      margin-bottom: 20px;
+      letter-spacing: 2px;
+    }
+    .status-work { background-color: #2e7d32; color: #ffffff; }
+    .status-rest { background-color: #c62828; color: #ffffff; }
+    .status-idle { background-color: #424242; color: #e0e0e0; }
+
+    .timer-display {
+      font-size: 22vw;
+      font-weight: 900;
+      font-family: monospace;
+      line-height: 1;
+      margin: 10px 0;
+      text-shadow: 0 0 20px rgba(255,255,255,0.2);
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-top: 25px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    button {
+      font-size: 1.2rem;
+      font-weight: bold;
+      padding: 12px 28px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      background-color: #2196F3;
+      color: white;
+      transition: transform 0.1s, background-color 0.2s;
+    }
+    button:active { transform: scale(0.95); }
+    button.stop-btn { background-color: #f44336; }
+    
+    .sound-notice {
+      margin-top: 15px;
+      font-size: 0.9rem;
+      color: #888888;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="status" class="status-tag status-idle">準備發車</div>
+  <div id="timer" class="timer-display">05:00</div>
+
+  <div class="controls">
+    <button onclick="startTimer()">同步啟動 (全員整點同步)</button>
+    <button class="stop-btn" onclick="stopTimer()">停止計時</button>
+  </div>
+  <div class="sound-notice">⚠️ 提示：開啟網頁後請點擊任意按鈕一次，手機才能正常播放換站蜂鳴聲。</div>
+
+  <script>
+    // 參數設定 (單位：秒)
+    const WORK_SEC = 300; // 5 分鐘運動
+    const REST_SEC = 30;   // 30 秒換站休息
+    const CYCLE_SEC = WORK_SEC + REST_SEC;
+
+    let timerInterval = null;
+    let audioCtx = null;
+
+    // 初始化聲音組件 (避開 iOS / Android 自動播放限制)
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    // 發出嗶嗶聲音效
+    function playBeep(freq = 880, type = 'sine', duration = 0.5) {
+      initAudio();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function updateTimer() {
+      const now = Math.floor(Date.now() / 1000);
+      const currentCyclePos = now % CYCLE_SEC; // 計算當前處於循環的第幾秒
+
+      const statusEl = document.getElementById('status');
+      const timerEl = document.getElementById('timer');
+
+      let remaining = 0;
+
+      if (currentCyclePos < WORK_SEC) {
+        // 運動時間
+        remaining = WORK_SEC - currentCyclePos;
+        statusEl.textContent = "運動中 (WORK)";
+        statusEl.className = "status-tag status-work";
+      } else {
+        // 換站休息時間
+        remaining = CYCLE_SEC - currentCyclePos;
+        statusEl.textContent = "換站中 (REST)";
+        statusEl.className = "status-tag status-rest";
+      }
+
+      // 倒數結束前 3 秒與換站瞬間播放聲音
+      if (remaining === 1) {
+        playBeep(1200, 'square', 0.8); // 換站長音
+      } else if (remaining <= 3 && remaining > 1) {
+        playBeep(600, 'sine', 0.2);   // 倒數預告短音
+      }
+
+      // 格式化顯示 mm:ss
+      const mins = Math.floor(remaining / 60).toString().padStart(2, '0');
+      const secs = (remaining % 60).toString().padStart(2, '0');
+      timerEl.textContent = `${mins}:${secs}`;
+    }
+
+    function startTimer() {
+      initAudio();
+      if (timerInterval) clearInterval(timerInterval);
+      updateTimer();
+      timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      document.getElementById('status').textContent = "已停止";
+      document.getElementById('status').className = "status-tag status-idle";
+      document.getElementById('timer').textContent = "05:00";
+    }
+  </script>
+</body>
+</html>
